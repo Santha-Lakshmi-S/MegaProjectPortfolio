@@ -1,4 +1,4 @@
- <!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="UTF-8">
@@ -355,8 +355,8 @@
   .pipeline-step {
     display: flex; gap: 1.5rem;
     padding: 1.5rem 0;
-    opacity: 0;
-    transform: translateX(-20px);
+    opacity: 1;
+    transform: translateX(0);
     transition: all 0.5s ease;
   }
   .pipeline-step.visible { opacity: 1; transform: translateX(0); }
@@ -560,7 +560,7 @@
   }
 
   .animate-on-scroll {
-    opacity: 0; transform: translateY(30px);
+    opacity: 1; transform: translateY(0);
     transition: opacity 0.7s ease, transform 0.7s ease;
   }
   .animate-on-scroll.visible {
@@ -659,4 +659,4 @@
       <div class="desc-text">
         <p>EEG (Electroencephalogram) recordings are among the most sensitive and clinically vital signals in neuroscience — yet they are inherently fragile. Eye blinks, muscle contractions, and environmental electrical noise constantly corrupt the data, making accurate interpretation challenging.</p>
         <p>This project deploys a deep learning Autoencoder trained to identify and suppress these artifacts. Given a noisy EEG input, the model encodes it into a compressed latent representation and reconstructs a cleaner approximation of the original neural signal.</p>
-        <p>The accompanying GUI 
+        <p>The accompanying GUI allows 
