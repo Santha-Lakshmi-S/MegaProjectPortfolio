@@ -1,0 +1,867 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>EEG Artifact Removal — Deep Learning Portfolio</title>
+<link href="https://fonts.googleapis.com/css2?family=Space+Mono:ital,wght@0,400;0,700;1,400&family=Syne:wght@400;600;700;800&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #050a12;
+    --bg2: #080f1c;
+    --surface: #0d1a2e;
+    --surface2: #111f35;
+    --border: #1a2f4a;
+    --accent: #00d4ff;
+    --accent2: #7b5ea7;
+    --accent3: #00ff9d;
+    --text: #e0eaf8;
+    --text-dim: #6b8cae;
+    --text-dimmer: #3d5a78;
+    --mono: 'Space Mono', monospace;
+    --sans: 'Syne', sans-serif;
+    --glow: 0 0 40px rgba(0,212,255,0.15);
+    --glow-strong: 0 0 80px rgba(0,212,255,0.25);
+  }
+
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  html { scroll-behavior: smooth; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--sans);
+    overflow-x: hidden;
+    line-height: 1.6;
+  }
+
+  /* ─── NOISE TEXTURE ─── */
+  body::before {
+    content: '';
+    position: fixed; inset: 0;
+    background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.04'/%3E%3C/svg%3E");
+    pointer-events: none; z-index: 0; opacity: 0.6;
+  }
+
+  /* ─── GRID BACKGROUND ─── */
+  body::after {
+    content: '';
+    position: fixed; inset: 0;
+    background-image:
+      linear-gradient(rgba(0,212,255,0.03) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(0,212,255,0.03) 1px, transparent 1px);
+    background-size: 60px 60px;
+    pointer-events: none; z-index: 0;
+  }
+
+  .container { max-width: 1100px; margin: 0 auto; padding: 0 2rem; position: relative; z-index: 1; }
+
+  /* ─── NAV ─── */
+  nav {
+    position: fixed; top: 0; left: 0; right: 0;
+    background: rgba(5,10,18,0.85);
+    backdrop-filter: blur(20px);
+    border-bottom: 1px solid var(--border);
+    z-index: 100;
+    padding: 1rem 0;
+  }
+  nav .inner {
+    display: flex; align-items: center; justify-content: space-between;
+    max-width: 1100px; margin: 0 auto; padding: 0 2rem;
+  }
+  .nav-brand {
+    font-family: var(--mono);
+    font-size: 0.75rem;
+    color: var(--accent);
+    letter-spacing: 0.2em;
+    text-transform: uppercase;
+  }
+  .nav-links { display: flex; gap: 2rem; list-style: none; }
+  .nav-links a {
+    font-family: var(--mono);
+    font-size: 0.7rem;
+    color: var(--text-dim);
+    text-decoration: none;
+    letter-spacing: 0.15em;
+    text-transform: uppercase;
+    transition: color 0.2s;
+  }
+  .nav-links a:hover { color: var(--accent); }
+
+  /* ─── HERO ─── */
+  .hero {
+    min-height: 100vh;
+    display: flex; flex-direction: column;
+    justify-content: center;
+    padding: 8rem 0 4rem;
+    position: relative;
+    overflow: hidden;
+  }
+
+  .hero-eyebrow {
+    font-family: var(--mono);
+    font-size: 0.7rem;
+    color: var(--accent);
+    letter-spacing: 0.3em;
+    text-transform: uppercase;
+    margin-bottom: 1.5rem;
+    opacity: 0;
+    animation: fadeUp 0.8s ease forwards 0.2s;
+  }
+
+  .hero-title {
+    font-family: var(--sans);
+    font-weight: 800;
+    font-size: clamp(2.8rem, 6vw, 5.5rem);
+    line-height: 1.05;
+    letter-spacing: -0.02em;
+    margin-bottom: 1.5rem;
+    opacity: 0;
+    animation: fadeUp 0.8s ease forwards 0.4s;
+  }
+  .hero-title .line2 {
+    color: transparent;
+    -webkit-text-stroke: 1px var(--accent);
+  }
+  .hero-title .accent-word {
+    color: var(--accent);
+    text-shadow: 0 0 60px rgba(0,212,255,0.4);
+  }
+
+  .hero-sub {
+    font-family: var(--mono);
+    font-size: 0.9rem;
+    color: var(--text-dim);
+    max-width: 520px;
+    line-height: 1.8;
+    margin-bottom: 2.5rem;
+    opacity: 0;
+    animation: fadeUp 0.8s ease forwards 0.6s;
+  }
+
+  .hero-badges {
+    display: flex; flex-wrap: wrap; gap: 0.75rem;
+    opacity: 0;
+    animation: fadeUp 0.8s ease forwards 0.8s;
+  }
+  .badge {
+    font-family: var(--mono);
+    font-size: 0.65rem;
+    letter-spacing: 0.15em;
+    text-transform: uppercase;
+    padding: 0.4rem 1rem;
+    border: 1px solid var(--border);
+    color: var(--text-dim);
+    background: var(--surface);
+    border-radius: 2px;
+    transition: all 0.2s;
+  }
+  .badge:hover { border-color: var(--accent); color: var(--accent); }
+  .badge.active { border-color: var(--accent); color: var(--accent); background: rgba(0,212,255,0.05); }
+
+  /* ─── EEG WAVEFORM SVG ─── */
+  .hero-visual {
+    position: absolute; right: -2rem; top: 50%;
+    transform: translateY(-50%);
+    width: 480px; opacity: 0.18;
+    pointer-events: none;
+    animation: fadeIn 2s ease forwards 1s;
+  }
+  @media(max-width: 900px) { .hero-visual { display: none; } }
+
+  /* ─── SECTIONS ─── */
+  section { padding: 5rem 0; }
+
+  .section-label {
+    font-family: var(--mono);
+    font-size: 0.65rem;
+    letter-spacing: 0.3em;
+    color: var(--accent);
+    text-transform: uppercase;
+    margin-bottom: 0.75rem;
+    display: flex; align-items: center; gap: 0.75rem;
+  }
+  .section-label::before {
+    content: '';
+    display: block; width: 24px; height: 1px;
+    background: var(--accent);
+  }
+
+  .section-title {
+    font-family: var(--sans);
+    font-weight: 800;
+    font-size: clamp(1.8rem, 3vw, 2.8rem);
+    letter-spacing: -0.02em;
+    margin-bottom: 3rem;
+    line-height: 1.1;
+  }
+
+  /* ─── OVERVIEW CARDS ─── */
+  .overview-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 1px;
+    background: var(--border);
+    border: 1px solid var(--border);
+    margin-bottom: 3rem;
+  }
+  @media(max-width: 700px) { .overview-grid { grid-template-columns: 1fr; } }
+
+  .overview-card {
+    background: var(--surface);
+    padding: 2rem;
+    position: relative;
+    overflow: hidden;
+    transition: background 0.3s;
+  }
+  .overview-card:hover { background: var(--surface2); }
+  .overview-card::before {
+    content: '';
+    position: absolute; top: 0; left: 0; right: 0;
+    height: 2px;
+    background: linear-gradient(90deg, var(--accent), transparent);
+    opacity: 0;
+    transition: opacity 0.3s;
+  }
+  .overview-card:hover::before { opacity: 1; }
+
+  .card-icon {
+    width: 36px; height: 36px;
+    margin-bottom: 1.25rem;
+    color: var(--accent);
+  }
+  .card-label {
+    font-family: var(--mono);
+    font-size: 0.65rem;
+    color: var(--text-dimmer);
+    letter-spacing: 0.15em;
+    text-transform: uppercase;
+    margin-bottom: 0.5rem;
+  }
+  .card-value {
+    font-family: var(--sans);
+    font-weight: 700;
+    font-size: 1rem;
+    color: var(--text);
+    line-height: 1.4;
+  }
+
+  /* ─── DESCRIPTION BLOCK ─── */
+  .desc-block {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 3rem;
+    align-items: start;
+  }
+  @media(max-width: 700px) { .desc-block { grid-template-columns: 1fr; } }
+
+  .desc-text {
+    font-family: var(--mono);
+    font-size: 0.85rem;
+    color: var(--text-dim);
+    line-height: 2;
+  }
+  .desc-text p + p { margin-top: 1rem; }
+
+  .highlight-box {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-left: 3px solid var(--accent);
+    padding: 1.75rem;
+  }
+  .highlight-box h4 {
+    font-family: var(--mono);
+    font-size: 0.7rem;
+    color: var(--accent);
+    letter-spacing: 0.2em;
+    text-transform: uppercase;
+    margin-bottom: 1rem;
+  }
+  .highlight-box ul { list-style: none; }
+  .highlight-box li {
+    font-family: var(--mono);
+    font-size: 0.8rem;
+    color: var(--text-dim);
+    padding: 0.5rem 0;
+    border-bottom: 1px solid var(--border);
+    display: flex; align-items: center; gap: 0.75rem;
+  }
+  .highlight-box li:last-child { border-bottom: none; }
+  .highlight-box li::before {
+    content: '▹';
+    color: var(--accent);
+    font-size: 0.75rem;
+    flex-shrink: 0;
+  }
+
+  /* ─── WAVEFORM VISUALIZATION ─── */
+  .wave-section {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    padding: 2.5rem;
+    margin: 3rem 0;
+  }
+  .wave-header {
+    display: flex; justify-content: space-between; align-items: center;
+    margin-bottom: 1.5rem;
+  }
+  .wave-title {
+    font-family: var(--mono);
+    font-size: 0.75rem;
+    color: var(--accent);
+    letter-spacing: 0.2em;
+    text-transform: uppercase;
+  }
+  .wave-status {
+    font-family: var(--mono);
+    font-size: 0.65rem;
+    color: var(--accent3);
+    display: flex; align-items: center; gap: 0.5rem;
+  }
+  .pulse-dot {
+    width: 6px; height: 6px;
+    background: var(--accent3);
+    border-radius: 50%;
+    animation: pulse 1.5s ease infinite;
+  }
+
+  .wave-canvas { width: 100%; height: 200px; display: block; }
+
+  .wave-row { margin-bottom: 1rem; }
+  .wave-label {
+    font-family: var(--mono);
+    font-size: 0.6rem;
+    color: var(--text-dimmer);
+    margin-bottom: 0.4rem;
+    letter-spacing: 0.1em;
+  }
+
+  /* ─── METHODOLOGY ─── */
+  .pipeline {
+    display: flex;
+    flex-direction: column;
+    gap: 0;
+    position: relative;
+  }
+  .pipeline::before {
+    content: '';
+    position: absolute;
+    left: 1.75rem; top: 3rem; bottom: 3rem;
+    width: 1px;
+    background: linear-gradient(to bottom, var(--accent), var(--accent2), transparent);
+  }
+
+  .pipeline-step {
+    display: flex; gap: 1.5rem;
+    padding: 1.5rem 0;
+    opacity: 1;
+    transform: translateX(0);
+    transition: all 0.5s ease;
+  }
+  .pipeline-step.visible { opacity: 1; transform: translateX(0); }
+
+  .step-num {
+    width: 3.5rem; height: 3.5rem;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    display: flex; align-items: center; justify-content: center;
+    flex-shrink: 0;
+    font-family: var(--mono);
+    font-size: 0.7rem;
+    color: var(--accent);
+    position: relative; z-index: 1;
+    transition: all 0.3s;
+  }
+  .pipeline-step:hover .step-num {
+    background: var(--accent);
+    color: var(--bg);
+    border-color: var(--accent);
+  }
+
+  .step-content { padding-top: 0.5rem; }
+  .step-name {
+    font-family: var(--sans);
+    font-weight: 700;
+    font-size: 1rem;
+    color: var(--text);
+    margin-bottom: 0.25rem;
+  }
+  .step-desc {
+    font-family: var(--mono);
+    font-size: 0.78rem;
+    color: var(--text-dim);
+    line-height: 1.7;
+  }
+
+  /* ─── TECH STACK ─── */
+  .tech-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+    gap: 1px;
+    background: var(--border);
+    border: 1px solid var(--border);
+  }
+
+  .tech-item {
+    background: var(--surface);
+    padding: 1.75rem 1.5rem;
+    text-align: center;
+    transition: background 0.2s;
+    cursor: default;
+  }
+  .tech-item:hover { background: var(--surface2); }
+
+  .tech-icon {
+    font-size: 2rem;
+    margin-bottom: 0.75rem;
+    display: block;
+  }
+  .tech-name {
+    font-family: var(--sans);
+    font-weight: 700;
+    font-size: 0.9rem;
+    color: var(--text);
+    margin-bottom: 0.25rem;
+  }
+  .tech-role {
+    font-family: var(--mono);
+    font-size: 0.65rem;
+    color: var(--text-dimmer);
+    letter-spacing: 0.1em;
+  }
+
+  /* ─── RESULTS ─── */
+  .metrics-row {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 1px;
+    background: var(--border);
+    border: 1px solid var(--border);
+    margin-bottom: 3rem;
+  }
+  @media(max-width: 600px) { .metrics-row { grid-template-columns: 1fr; } }
+
+  .metric-card {
+    background: var(--surface);
+    padding: 2.5rem 2rem;
+    text-align: center;
+    position: relative;
+    overflow: hidden;
+    transition: background 0.3s;
+  }
+  .metric-card:hover { background: var(--surface2); }
+  .metric-card::after {
+    content: '';
+    position: absolute; bottom: 0; left: 0; right: 0;
+    height: 2px;
+    background: linear-gradient(90deg, transparent, var(--accent), transparent);
+  }
+
+  .metric-num {
+    font-family: var(--sans);
+    font-weight: 800;
+    font-size: 3rem;
+    line-height: 1;
+    margin-bottom: 0.5rem;
+    color: var(--accent);
+    text-shadow: 0 0 40px rgba(0,212,255,0.3);
+  }
+  .metric-unit {
+    font-family: var(--mono);
+    font-size: 0.75rem;
+    color: var(--text-dimmer);
+    letter-spacing: 0.1em;
+  }
+  .metric-label {
+    font-family: var(--mono);
+    font-size: 0.7rem;
+    color: var(--text-dim);
+    margin-top: 0.75rem;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+  }
+
+  /* ─── CONCLUSION ─── */
+  .conclusion-block {
+    background: linear-gradient(135deg, var(--surface) 0%, rgba(0,212,255,0.04) 100%);
+    border: 1px solid var(--border);
+    border-left: 3px solid var(--accent);
+    padding: 3rem;
+    position: relative;
+    overflow: hidden;
+  }
+  .conclusion-block::before {
+    content: '"';
+    position: absolute;
+    right: 2rem; top: -1rem;
+    font-size: 10rem;
+    color: rgba(0,212,255,0.05);
+    font-family: Georgia, serif;
+    line-height: 1;
+  }
+  .conclusion-text {
+    font-family: var(--sans);
+    font-size: 1.15rem;
+    font-weight: 600;
+    line-height: 1.7;
+    color: var(--text);
+    position: relative; z-index: 1;
+    max-width: 780px;
+  }
+
+  /* ─── FOOTER ─── */
+  footer {
+    border-top: 1px solid var(--border);
+    padding: 2rem 0;
+    margin-top: 2rem;
+  }
+  .footer-inner {
+    display: flex; justify-content: space-between; align-items: center;
+    flex-wrap: wrap; gap: 1rem;
+  }
+  .footer-text {
+    font-family: var(--mono);
+    font-size: 0.65rem;
+    color: var(--text-dimmer);
+    letter-spacing: 0.1em;
+  }
+  .footer-tags { display: flex; gap: 0.5rem; flex-wrap: wrap; }
+  .footer-tag {
+    font-family: var(--mono);
+    font-size: 0.6rem;
+    color: var(--text-dimmer);
+    padding: 0.2rem 0.6rem;
+    border: 1px solid var(--border);
+  }
+
+  /* ─── DIVIDER ─── */
+  .divider {
+    height: 1px;
+    background: linear-gradient(90deg, transparent, var(--border), transparent);
+    margin: 1rem 0;
+  }
+
+  /* ─── ANIMATIONS ─── */
+  @keyframes fadeUp {
+    from { opacity: 0; transform: translateY(24px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+  @keyframes fadeIn {
+    from { opacity: 0; } to { opacity: 0.18; }
+  }
+  @keyframes pulse {
+    0%, 100% { opacity: 1; transform: scale(1); }
+    50% { opacity: 0.5; transform: scale(0.8); }
+  }
+  @keyframes wave-draw {
+    from { stroke-dashoffset: 2000; }
+    to { stroke-dashoffset: 0; }
+  }
+
+  .animate-on-scroll {
+    opacity: 1; transform: translateY(0);
+    transition: opacity 0.7s ease, transform 0.7s ease;
+  }
+  .animate-on-scroll.visible {
+    opacity: 1; transform: translateY(0);
+  }
+
+  /* scrollbar */
+  ::-webkit-scrollbar { width: 4px; }
+  ::-webkit-scrollbar-track { background: var(--bg); }
+  ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+</style>
+</head>
+<body>
+
+<!-- NAV -->
+<nav>
+  <div class="inner">
+    <span class="nav-brand">EEG // Deep Learning</span>
+    <ul class="nav-links">
+      <li><a href="#overview">Overview</a></li>
+      <li><a href="#methodology">Method</a></li>
+      <li><a href="#tech">Stack</a></li>
+      <li><a href="#results">Results</a></li>
+    </ul>
+  </div>
+</nav>
+
+<!-- HERO -->
+<section class="hero">
+  <div class="container">
+    <div class="hero-eyebrow">Biomedical Engineering · Signal Processing · Machine Learning</div>
+    <h1 class="hero-title">
+      EEG Artifact<br>
+      <span class="line2">Removal via</span><br>
+      <span class="accent-word">Deep Learning</span>
+    </h1>
+    <p class="hero-sub">
+      Autoencoder-based denoising of EEG signals with a real-time GUI.<br>
+      Reconstructing clean neural data from noise-corrupted inputs.
+    </p>
+    <div class="hero-badges">
+      <span class="badge active">Autoencoder / CNN</span>
+      <span class="badge">TensorFlow / Keras</span>
+      <span class="badge">Signal Denoising</span>
+      <span class="badge">Python GUI</span>
+      <span class="badge">14-Channel EEG</span>
+    </div>
+  </div>
+
+  <!-- Decorative waveform -->
+  <svg class="hero-visual" viewBox="0 0 480 300" fill="none" xmlns="http://www.w3.org/2000/svg">
+    <polyline stroke="#00d4ff" stroke-width="1.5" fill="none" stroke-dasharray="2000" style="animation:wave-draw 3s ease forwards 1.2s; stroke-dashoffset:2000;"
+      points="0,150 20,150 24,80 28,220 32,150 60,150 65,90 70,210 75,150 100,150 105,60 110,240 115,150 140,150 145,100 150,200 155,150 180,150 185,70 190,230 195,150 220,150 225,110 230,190 235,150 260,150 265,85 270,215 275,150 300,150 305,95 310,205 315,150 340,150 345,75 350,225 355,150 380,150 385,105 390,195 395,150 420,150 425,88 430,212 435,150 460,150 465,120 470,180 475,150 480,150"/>
+    <polyline stroke="#7b5ea7" stroke-width="1" fill="none" stroke-dasharray="2000" style="animation:wave-draw 3s ease forwards 1.6s; stroke-dashoffset:2000;"
+      points="0,180 30,180 35,155 40,205 45,180 80,180 85,165 90,195 95,180 130,180 135,150 140,210 145,180 180,180 185,160 190,200 195,180 230,180 235,155 240,205 245,180 280,180 285,165 290,195 295,180 330,180 335,155 340,205 345,180 380,180 385,162 390,198 395,180 430,180 435,158 440,202 445,180 480,180"/>
+    <polyline stroke="#00ff9d" stroke-width="0.8" fill="none" stroke-dasharray="2000" style="animation:wave-draw 3s ease forwards 2s; stroke-dashoffset:2000;"
+      points="0,120 40,120 45,100 50,140 55,120 90,120 95,105 100,135 105,120 140,120 145,98 150,142 155,120 190,120 195,102 200,138 205,120 240,120 245,100 250,140 255,120 290,120 295,108 300,132 305,120 340,120 345,102 350,138 355,120 390,120 395,106 400,134 405,120 440,120 445,104 450,136 455,120 480,120"/>
+  </svg>
+</section>
+
+<!-- OVERVIEW -->
+<section id="overview">
+  <div class="container">
+    <div class="section-label">01 // Project Overview</div>
+    <h2 class="section-title animate-on-scroll">What this project does</h2>
+
+    <div class="overview-grid animate-on-scroll">
+      <div class="overview-card">
+        <svg class="card-icon" viewBox="0 0 36 36" fill="none" stroke="currentColor" stroke-width="1.5">
+          <rect x="4" y="8" width="28" height="20" rx="2"/>
+          <path d="M4 14h4l4-5 4 10 4-7 4 5 4-3h4" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+        <div class="card-label">Dataset</div>
+        <div class="card-value">EEG Eye State Dataset<br><small style="color:var(--text-dimmer); font-size:0.8em;">Kaggle · 14 Channels · CSV</small></div>
+      </div>
+      <div class="overview-card">
+        <svg class="card-icon" viewBox="0 0 36 36" fill="none" stroke="currentColor" stroke-width="1.5">
+          <circle cx="18" cy="18" r="12"/>
+          <path d="M18 8v4M18 24v4M8 18h4M24 18h4" stroke-linecap="round"/>
+          <circle cx="18" cy="18" r="4" fill="currentColor" opacity="0.3"/>
+        </svg>
+        <div class="card-label">Model</div>
+        <div class="card-value">Deep Autoencoder<br><small style="color:var(--text-dimmer); font-size:0.8em;">Encoder → Latent → Decoder</small></div>
+      </div>
+      <div class="overview-card">
+        <svg class="card-icon" viewBox="0 0 36 36" fill="none" stroke="currentColor" stroke-width="1.5">
+          <rect x="6" y="4" width="24" height="28" rx="2"/>
+          <path d="M12 12h12M12 18h12M12 24h8" stroke-linecap="round"/>
+        </svg>
+        <div class="card-label">Interface</div>
+        <div class="card-value">Python Tkinter GUI<br><small style="color:var(--text-dimmer); font-size:0.8em;">Upload · Process · Compare</small></div>
+      </div>
+    </div>
+
+    <div class="desc-block animate-on-scroll">
+      <div class="desc-text">
+        <p>EEG (Electroencephalogram) recordings are among the most sensitive and clinically vital signals in neuroscience — yet they are inherently fragile. Eye blinks, muscle contractions, and environmental electrical noise constantly corrupt the data, making accurate interpretation challenging.</p>
+        <p>This project deploys a deep learning Autoencoder trained to identify and suppress these artifacts. Given a noisy EEG input, the model encodes it into a compressed latent representation and reconstructs a cleaner approximation of the original neural signal.</p>
+        <p>The accompanying GUI allows non-technical users to load signals, trigger processing, and compare raw vs. cleaned outputs side-by-side — bridging the gap between research and clinical utility.</p>
+      </div>
+      <div class="highlight-box">
+        <h4>Key Features</h4>
+        <ul>
+          <li>EEG signal upload & multi-channel visualization</li>
+          <li>Automated normalization & preprocessing</li>
+          <li>Artifact simulation (EOG, EMG, electrical noise)</li>
+          <li>Autoencoder-based signal denoising</li>
+          <li>Clean signal reconstruction & export</li>
+          <li>Side-by-side raw vs. processed comparison</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- WAVEFORM VIZ -->
+<div class="container">
+  <div class="wave-section animate-on-scroll">
+    <div class="wave-header">
+      <span class="wave-title">// signal_monitor — channel_view</span>
+      <span class="wave-status"><span class="pulse-dot"></span>Model Active · Reconstruction Error: 0.0098</span>
+    </div>
+    <svg class="wave-canvas" viewBox="0 0 900 200" preserveAspectRatio="none" xmlns="http://www.w3.org/2000/svg">
+      <!-- Noisy signal -->
+      <text x="10" y="20" font-family="monospace" font-size="9" fill="#3d5a78" letter-spacing="1">NOISY INPUT [Fp1]</text>
+      <polyline fill="none" stroke="#ff4466" stroke-width="1" opacity="0.7"
+        points="30,60 50,45 55,80 60,30 65,75 70,50 80,65 90,35 95,78 100,40 110,68 120,32 125,72 130,55 140,80 145,28 150,65 160,42 170,72 175,38 180,60 190,48 200,75 205,32 210,60 220,45 230,70 235,36 240,62 250,50 260,68 265,30 270,58 280,42 290,75 295,35 300,65 310,48 320,72 325,38 330,60 340,45 350,80 355,28 360,65 370,42 380,70 385,36 390,62 400,50 410,78 415,32 420,60 430,45 440,68 445,30 450,58 460,42 470,75 475,35 480,65 490,48 500,72 505,38 510,60 520,45 530,80 535,28 540,65 550,42 560,70 565,36 570,62 580,50 590,75 595,32 600,60 610,45 620,68 625,30 630,58 640,42 650,72 655,38 660,60 670,45 680,78 685,32 690,60 700,45 710,70 715,36 720,62 730,50 740,75 745,35 750,65 760,48 770,72 775,38 780,60 790,45 800,80 805,28 810,65 820,42 830,70 835,36 840,62 850,50 860,75 865,32 870,60 880,45 890,68"/>
+
+      <!-- Clean reconstructed -->
+      <text x="10" y="130" font-family="monospace" font-size="9" fill="#3d5a78" letter-spacing="1">RECONSTRUCTED [Fp1]</text>
+      <polyline fill="none" stroke="#00d4ff" stroke-width="1.5"
+        points="30,155 60,145 90,152 120,148 150,155 180,150 210,155 240,149 270,154 300,150 330,155 360,148 390,154 420,150 450,155 480,149 510,154 540,150 570,155 600,148 630,154 660,150 690,155 720,149 750,154 780,150 810,155 840,149 870,154"/>
+
+      <!-- Accent glow on clean -->
+      <polyline fill="none" stroke="#00d4ff" stroke-width="4" opacity="0.06"
+        points="30,155 60,145 90,152 120,148 150,155 180,150 210,155 240,149 270,154 300,150 330,155 360,148 390,154 420,150 450,155 480,149 510,154 540,150 570,155 600,148 630,154 660,150 690,155 720,149 750,154 780,150 810,155 840,149 870,154"/>
+
+      <!-- Separator -->
+      <line x1="0" y1="108" x2="900" y2="108" stroke="#1a2f4a" stroke-width="1"/>
+    </svg>
+  </div>
+</div>
+
+<!-- METHODOLOGY -->
+<section id="methodology">
+  <div class="container">
+    <div class="section-label">02 // Methodology</div>
+    <h2 class="section-title animate-on-scroll">Processing Pipeline</h2>
+
+    <div class="pipeline">
+      <div class="pipeline-step">
+        <div class="step-num">01</div>
+        <div class="step-content">
+          <div class="step-name">EEG Signal Input</div>
+          <div class="step-desc">Raw EEG recordings loaded via the GUI from CSV files. The dataset contains 14 channels captured at standard clinical frequencies, including eye-state labels for validation.</div>
+        </div>
+      </div>
+      <div class="pipeline-step">
+        <div class="step-num">02</div>
+        <div class="step-content">
+          <div class="step-name">Preprocessing & Normalization</div>
+          <div class="step-desc">Signals are normalized to a standardized range using min-max scaling. This ensures consistent input magnitude across all 14 channels regardless of recording conditions or electrode impedance variation.</div>
+        </div>
+      </div>
+      <div class="pipeline-step">
+        <div class="step-num">03</div>
+        <div class="step-content">
+          <div class="step-name">Artifact Simulation</div>
+          <div class="step-desc">Realistic noise is synthetically injected to simulate eye-blink (EOG) artifacts, muscle activity (EMG), and environmental 50/60Hz electrical interference — creating corrupted training pairs.</div>
+        </div>
+      </div>
+      <div class="pipeline-step">
+        <div class="step-num">04</div>
+        <div class="step-content">
+          <div class="step-name">Autoencoder Training</div>
+          <div class="step-desc">A deep convolutional Autoencoder is trained on noisy→clean signal pairs. The encoder compresses the signal into a low-dimensional latent space, forcing the network to learn only the essential neural structure.</div>
+        </div>
+      </div>
+      <div class="pipeline-step">
+        <div class="step-num">05</div>
+        <div class="step-content">
+          <div class="step-name">Signal Reconstruction</div>
+          <div class="step-desc">The decoder maps the latent representation back to a full-resolution denoised EEG signal. Reconstruction error (MSE ≈ 0.01) quantifies the fidelity of the output vs. the ground truth clean signal.</div>
+        </div>
+      </div>
+      <div class="pipeline-step">
+        <div class="step-num">06</div>
+        <div class="step-content">
+          <div class="step-name">GUI Visualization & Comparison</div>
+          <div class="step-desc">The Tkinter-based GUI renders both the noisy input and the reconstructed signal on Matplotlib canvases in real time, enabling visual and quantitative comparison in under 2 seconds.</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- TECH STACK -->
+<section id="tech">
+  <div class="container">
+    <div class="section-label">03 // Technology Stack</div>
+    <h2 class="section-title animate-on-scroll">Tools & Libraries</h2>
+
+    <div class="tech-grid animate-on-scroll">
+      <div class="tech-item">
+        <span class="tech-icon">🐍</span>
+        <div class="tech-name">Python 3</div>
+        <div class="tech-role">Core Language</div>
+      </div>
+      <div class="tech-item">
+        <span class="tech-icon">🧠</span>
+        <div class="tech-name">TensorFlow</div>
+        <div class="tech-role">Deep Learning Framework</div>
+      </div>
+      <div class="tech-item">
+        <span class="tech-icon">⚡</span>
+        <div class="tech-name">Keras</div>
+        <div class="tech-role">Model API</div>
+      </div>
+      <div class="tech-item">
+        <span class="tech-icon">🔢</span>
+        <div class="tech-name">NumPy</div>
+        <div class="tech-role">Signal Processing</div>
+      </div>
+      <div class="tech-item">
+        <span class="tech-icon">📊</span>
+        <div class="tech-name">Matplotlib</div>
+        <div class="tech-role">Visualization</div>
+      </div>
+      <div class="tech-item">
+        <span class="tech-icon">🖥️</span>
+        <div class="tech-name">Tkinter</div>
+        <div class="tech-role">GUI Development</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- RESULTS -->
+<section id="results">
+  <div class="container">
+    <div class="section-label">04 // Results</div>
+    <h2 class="section-title animate-on-scroll">Performance Metrics</h2>
+
+    <div class="metrics-row animate-on-scroll">
+      <div class="metric-card">
+        <div class="metric-num">0.01</div>
+        <div class="metric-unit">MSE</div>
+        <div class="metric-label">Reconstruction Error</div>
+      </div>
+      <div class="metric-card">
+        <div class="metric-num">&lt;2s</div>
+        <div class="metric-unit">per signal</div>
+        <div class="metric-label">Processing Time</div>
+      </div>
+      <div class="metric-card">
+        <div class="metric-num">14</div>
+        <div class="metric-unit">channels</div>
+        <div class="metric-label">EEG Channels Handled</div>
+      </div>
+    </div>
+
+    <div class="conclusion-block animate-on-scroll">
+      <div class="conclusion-text">
+        This project validates the capability of deep learning Autoencoders in biomedical signal enhancement — achieving noise suppression with a reconstruction error of approximately 0.01 MSE while maintaining sub-2-second inference speed. The GUI bridges the gap between complex ML pipelines and practical clinical usability, demonstrating that AI-driven EEG denoising can be both accurate and accessible.
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- FOOTER -->
+<footer>
+  <div class="container">
+    <div class="footer-inner">
+      <div class="footer-text">EEG ARTIFACT REMOVAL — DEEP LEARNING PROJECT &nbsp;·&nbsp; BIOMEDICAL ENGINEERING</div>
+      <div class="footer-tags">
+        <span class="footer-tag">#EEG</span>
+        <span class="footer-tag">#Autoencoder</span>
+        <span class="footer-tag">#SignalProcessing</span>
+        <span class="footer-tag">#TensorFlow</span>
+        <span class="footer-tag">#Neuroscience</span>
+      </div>
+    </div>
+  </div>
+</footer>
+
+<script>
+  // Scroll animations
+  const observer = new IntersectionObserver((entries) => {
+    entries.forEach(e => {
+      if (e.isIntersecting) {
+        e.target.classList.add('visible');
+      }
+    });
+  }, { threshold: 0.15 });
+
+  document.querySelectorAll('.animate-on-scroll, .pipeline-step').forEach(el => observer.observe(el));
+
+  // Stagger pipeline steps
+  document.querySelectorAll('.pipeline-step').forEach((step, i) => {
+    step.style.transitionDelay = `${i * 0.1}s`;
+  });
+</script>
+</body>
+</html>
